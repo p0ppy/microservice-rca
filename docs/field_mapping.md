@@ -1,14 +1,14 @@
 # 字段映射表
 
 ## 目录
-1. [AIOps 2025 日志](#aiops-2025-日志)
-2. [AIOps 2025 调用链](#aiops-2025-调用链)
-3. [AIOps 2025 指标：apm/service](#aiops-2025-指标apmservice宽表)
-4. [AIOps 2025 指标：apm/pod](#aiops-2025-指标apmpod宽表)
-5. [AIOps 2025 指标：infra/*](#aiops-2025-指标infra窄表)
-6. [AIOps 2025 故障标注](#aiops-2025-故障标注groundtruthjsonl)
-7. [RCA100 调用链](#rca100-调用链)
-8. [GAIA](#gaia待补)
+
+1. AIOps 2025 日志
+2. AIOps 2025 调用链
+3. AIOps 2025 指标：apm/service 与 apm/pod
+4. AIOps 2025 指标：infra/*
+5. AIOps 2025 故障标注：groundtruth.jsonl
+6. GAIA（待补）
+7. RCA100（待补）
 
 ---
 
@@ -128,26 +128,10 @@
 - key_observations 的 type 为 metric / log / trace，分别去对应数据源找证据。
 - 时间精度秒级，metric 是分钟级，窗口过滤用 floor/ceil 到分钟。
 
-## AIOps 2025 指标：apm/pod（宽表）
+## GAIA（待补）
 
-| 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
-|---|---|---|---|
-| time | 时间（UTC，分钟级） | timestamp | 2025-06-05T16:00:00Z |
-| object_id | Pod 名 | entity | frontend-1 |
-| object_type | 实体类型 | entity_type | pod |
-| request | 请求量 | request | 计数 |
-| response | 响应量 | response | 计数 |
-| rrt | 平均响应时间 | rrt | 毫秒级 |
-| rrt_max | 最大响应时间 | rrt_max | 毫秒级 |
-| error | 错误数 | error | 计数 |
-| error_ratio | 错误率 | error_ratio | 比例 |
-| client_error | 客户端错误数 | client_error | 计数 |
-| client_error_ratio | 客户端错误率 | client_error_ratio | 比例 |
-| server_error | 服务端错误数 | server_error | 计数 |
-| server_error_ratio | 服务端错误率 | server_error_ratio | 比例 |
-| timeout | 超时数 | timeout | 计数 |
+> 待确认 `MicroSS/metric`、`MicroSS/trace`、`MicroSS/run`、`Companion_Data/*.zip` 的实际格式后填写。
 
-### 说明
-- 字段与 apm/service 完全一致，唯一区别是 object_id 是 Pod 名而不是服务名。
-- 一分钟一行，直接可用，不需要聚合。
-- Pod 名格式 `<service>-<ordinal>`，可派生 service。
+## RCA100（待补）
+
+> 待确认 `cases/t00x/metrics.parquet`、`logs.parquet`、`events.parquet`、`alerts.parquet` 字段后填写。
