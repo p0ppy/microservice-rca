@@ -128,6 +128,139 @@
 - key_observations 的 type 为 metric / log / trace，分别去对应数据源找证据。
 - 时间精度秒级，metric 是分钟级，窗口过滤用 floor/ceil 到分钟。
 
+
+### GAIA 故障注入记录（run_table）
+
+| 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
+|---|---|---|---|
+| datetime | 日期 | date | 2021-07-01；仅日期 |
+| service | 服务名 | service | dbservice1 |
+| message | 故障描述 | fault_message | 自然语言，含故障类型、开始时间、时长、资源量 |
+
+### message 正则提取规则
+
+| 提取项 | 正则 | 示例 |
+|---|---|---|
+| 故障类型 | `\[(.*?)\]` | memory_anomalies |
+| 开始时间 | `start at (.+?) and` | 2021-07-01 11:44:26.882752 |
+| 持续时长 | `lasts (\d+) seconds` | 600 |
+| 资源量 | `use (\d+\w+) memory` | 1g |
+| 严重级别 | `\| (WARNING\|ERROR\|INFO) \|` | WARNING |
+
+### 与 AIOps 2025 的差异
+- GAIA run 表是半结构化，需正则解析 message；
+- 无 key_observations，证据需从日志/指标中自行提取；
+- 时间只有日期级，精确时间在 message 内。
+
+## GAIA 指标（metric）
+
+| 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
+|---|---|---|---|
+| timestamp | Unix 毫秒时间戳 | timestamp | 1627747202000 → UTC 时间；采样间隔 30 秒 |
+| value | 指标值 | value | 6488064 |
+| 文件名 | 实体+指标名 | entity, metric | 用正则拆分，见下 |
+
+### 文件名解析
+- 格式：`<实体>_<IP>_<指标名>_<开始日期>_<结束日期>.csv`
+- 正则：`^(.+?_\d+\.\d+\.\d+\.\d+)_(.+)_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$`
+- 实体例：`dbservice1_0.0.0.4`
+- 指标例：`docker_memory_stats_mapped_file`、`docker_cpu_core_7_norm_pct`
+- 文件数：10817 个，一指标一文件
+
+### 关键说明
+- 时间单位毫秒，`pd.to_datetime(df["timestamp"], unit="ms", utc=True)`。
+- 采样间隔 30 秒，与 AIOps 2025 的 60 秒不同，对齐时需重采样到统一频率。
+- 指标名和实体只在文件名里，读文件时必须同时解析文件名。
+
+### 指标规模与筛选策略
+
+- metric 文件总数：10817
+- CPU 类占 3024 个（24 核 × 42 实体 × 3 类），必须聚合
+- 非 CPU 指标每实体一个文件，36-42 个实体
+
+| 类别 | 原始指标 | 保留策略 | 聚合 |
+|---|---|---|---|
+| CPU | docker_cpu_core_N_pct / _ticks / _norm_pct | 只保留 _pct | 24 核取 mean |
+| 内存 | docker_memory_usage_pct / total / fail_count | 保留 3 个 | 原样 |
+| 磁盘 | docker_diskio_read_bytes / write_bytes / write_rate / write_queued | 保留 4 个 | 原样 |
+| 网络 | docker_network_in/out_bytes / errors / dropped | 保留 6 个 | 原样 |
+| 系统 | system_* | 待全量统计 | 原样 |
+| 中间件 | redis_* / tidb_* | 待全量统计 | 原样 |
+
+### 聚合规则
+- CPU `_pct`：24 核取 mean，得到实体级 CPU 使用率
+- 累加型 `_ticks`、`_bytes_total`：先 sum 再一阶差分，避免绝对值无意义
+- 比率型 `_pct`、`_ratio`：直接 mean 或 max
+- 聚合后每实体每分钟一行
+
+### 指标前缀分布（去重后 ~591 个指标名）
+
+| 前缀 | 指标名数 | 占比 | 处理 |
+|---|---|---|---|
+| system | 385 | 65% | 需按子类（cpu/memory/network/filesystem/disk）细分后筛选 |
+| docker | 90 | 15% | CPU 已聚合，其余按内存/磁盘/网络保留 |
+| redis | 89 | 15% | 保留连接数、命中率、内存、延迟类 |
+| zookeeper | 27 | 5% | 保留连接数、延迟、节点数类 |
+
+### 筛选原则
+- system 类：按子类保留 5-10 个核心指标，去掉按核心/设备展开的重复维度
+- docker 类：CPU 聚合成 1 个，内存 3 个，磁盘 4 个，网络 6 个
+- redis/zookeeper：保留与故障强相关的 5-10 个
+- 最终目标：50-80 个核心指标，对应开题中的特征筛选目标
+
+### system 类指标筛选清单
+
+system 类共 385 个指标名、约 5000+ 文件，按子类砍到 15-20 个：
+
+| 子类 | 文件数 | 保留 | 砍掉 |
+|---|---|---|---|
+| network_summary | 2281 | tcp_established, tcp_retrans, socket_used | 其余 TCP/UDP 细分计数器 |
+| process_cgroup | 507 | 全部砍掉（与 docker 类冗余） | 全部 |
+| diskio_iostat | 143 | await, util | 其余 |
+| memory_* | ~340 | used_pct, actual_free, swap_used, page_swap_in_rate | hugepages、page 细项 |
+| cpu_* | ~200 | user_pct, system_pct, iowait_pct, idle_pct | 各 core 展开、norm_pct |
+| process_summary | 93 | running, sleeping, zombie | dead、idle、unknown、stopped |
+| fsstat_total | 52 | used_pct, free | size_total、files |
+| load_norm | 33 | 1, 5, 15 | 其余 |
+| 其他 | — | 按需保留 3-5 个 | — |
+
+### 总体筛选目标
+- docker 类：CPU 聚合 1 个 + 内存 3 + 磁盘 4 + 网络 6 ≈ 14 个
+- system 类：15-20 个
+- redis 类：5-8 个
+- zookeeper 类：3-5 个
+- 合计约 40-50 个核心指标，符合开题“保留 50-80 个”目标
+
+## GAIA 调用链（trace）
+
+| 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
+|---|---|---|---|
+| timestamp | 日志时间（秒级） | timestamp | 2021-07-01 09:57:04 |
+| host_ip | 主机 IP | host_ip | 0.0.0.1 |
+| service_name | 服务名 | service | webservice1 |
+| trace_id | 调用链 ID | trace_id | 22741016938865b0 |
+| span_id | span ID | span_id | 3a98d34fb3b6075e |
+| parent_id | 父 span ID | parent_id | 0 表示 root；**直接给出，无需派生** |
+| start_time | 开始时间（微秒） | start_time | 2021-07-01 09:57:04.255416 |
+| end_time | 结束时间（微秒） | end_time | 2021-07-01 09:57:04.268775 |
+| url | 请求 URL | url | http://0.0.0.1:9379/web_login_service |
+| status_code | HTTP 状态码 | status | 500 / 200 / 300 |
+| message | 调用描述 | message | request call function 1 ... |
+
+### 派生字段
+| 派生 | 方式 | 标准化字段 |
+|---|---|---|
+| 持续时间 | `end_time - start_time`，单位微秒 | duration_us |
+| 调用方 | 按 trace_id + parent_id join 父 span 的 service | caller |
+| 被调用方 | 当前 span 的 service | callee |
+
+### 关键说明
+- **parent_id 直接给出**，root 为 `0`，不需要从嵌套结构解析，比 AIOps 2025 简单。
+- `status_code` 是 HTTP 状态码（200/300/500），不是 span 的 status.code，异常判定用 `status_code >= 400`。
+- 时间精度：`start_time`/`end_time` 是微秒级字符串，`timestamp` 是秒级，duration 要自己算。
+- 文件按服务+月份切分：`trace_table_<服务>_<YYYY-MM>.csv`，10 个服务 × 月份数。
+- **没有 `caller` / `callee` 字段**，需按 parent_id join 派生，和 AIOps 2025 一样。
+
 ## GAIA（待补）
 
 > 待确认 `MicroSS/metric`、`MicroSS/trace`、`MicroSS/run`、`Companion_Data/*.zip` 的实际格式后填写。
