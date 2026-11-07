@@ -1,3 +1,17 @@
+# 字段映射表
+
+## 目录
+1. [AIOps 2025 日志](#aiops-2025-日志)
+2. [AIOps 2025 调用链](#aiops-2025-调用链)
+3. [AIOps 2025 指标：apm/service](#aiops-2025-指标apmservice宽表)
+4. [AIOps 2025 指标：apm/pod](#aiops-2025-指标apmpod宽表)
+5. [AIOps 2025 指标：infra/*](#aiops-2025-指标infra窄表)
+6. [AIOps 2025 故障标注](#aiops-2025-故障标注groundtruthjsonl)
+7. [RCA100 调用链](#rca100-调用链)
+8. [GAIA](#gaia待补)
+
+---
+
 ## AIOps 2025 日志
 
 | 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
