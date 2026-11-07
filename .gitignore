@@ -25,3 +25,8 @@ __pycache__/
 Thumbs.db
 *.log
 *.tmp
+
+# 忽略所有数据和输出临时文件
+data/
+notebooks/
+outputs/
