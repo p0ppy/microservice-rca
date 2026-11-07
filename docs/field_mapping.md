@@ -89,3 +89,51 @@
 - 同一 timestamp 有多行（device/mountpoint/type 维度不同），按 `timestamp + entity + metric` 聚合。
 - 聚合后每实体每分钟 1 行。
 - 与 groundtruth.key_metrics 匹配时，用 `kpi_key`，不用 `kpi_name`。
+
+## AIOps 2025 故障标注（groundtruth.jsonl）
+
+| 原始字段 | 含义 | 标准化字段 | 示例 / 用途 |
+|---|---|---|---|
+| uuid | 案例唯一 ID | sample_id | 345fbe93-80；三元组主键 |
+| fault_category | 故障大类 | fault_category | stress test / network attack / pod fault；输出标签 |
+| fault_type | 故障类型 | fault_type | cpu stress / network corrupt；输出标签 |
+| instance_type | 故障层级 | instance_type | service / pod / node；输出标签 |
+| service | 根因服务 | root_service | emailservice；可能为空，为空时用 instance 兜底 |
+| instance | 根因实例 | root_instance | 字符串或数组；数组时 join 成文本 |
+| source | 网络故障源 | source | checkoutservice；仅 network 类有值 |
+| destination | 网络故障目标 | destination | shippingservice；仅 network 类有值 |
+| start_time | 故障开始（UTC，秒级） | start_time | 2025-06-05T16:10:02Z；窗口过滤起点 |
+| end_time | 故障结束（UTC，秒级） | end_time | 2025-06-05T16:31:02Z；窗口过滤终点 |
+| key_observations | 证据检查点 | key_observations | list[{type, keyword}]；证据筛选器 |
+| key_metrics | 关键指标名 | key_metrics | ["pod_cpu_usage"]；定位 infra 文件 |
+| fault_description | 故障描述同义词 | fault_description | 文本增强；RAG 知识库关键词 |
+
+### 特殊处理
+- service 为空时，用 instance 的第一个元素作为根因服务。
+- instance 是数组时，用 " / " 连接。
+- key_observations 的 type 为 metric / log / trace，分别去对应数据源找证据。
+- 时间精度秒级，metric 是分钟级，窗口过滤用 floor/ceil 到分钟。
+
+## AIOps 2025 指标：apm/pod（宽表）
+
+| 原始字段 | 含义 | 标准化字段 | 示例 / 说明 |
+|---|---|---|---|
+| time | 时间（UTC，分钟级） | timestamp | 2025-06-05T16:00:00Z |
+| object_id | Pod 名 | entity | frontend-1 |
+| object_type | 实体类型 | entity_type | pod |
+| request | 请求量 | request | 计数 |
+| response | 响应量 | response | 计数 |
+| rrt | 平均响应时间 | rrt | 毫秒级 |
+| rrt_max | 最大响应时间 | rrt_max | 毫秒级 |
+| error | 错误数 | error | 计数 |
+| error_ratio | 错误率 | error_ratio | 比例 |
+| client_error | 客户端错误数 | client_error | 计数 |
+| client_error_ratio | 客户端错误率 | client_error_ratio | 比例 |
+| server_error | 服务端错误数 | server_error | 计数 |
+| server_error_ratio | 服务端错误率 | server_error_ratio | 比例 |
+| timeout | 超时数 | timeout | 计数 |
+
+### 说明
+- 字段与 apm/service 完全一致，唯一区别是 object_id 是 Pod 名而不是服务名。
+- 一分钟一行，直接可用，不需要聚合。
+- Pod 名格式 `<service>-<ordinal>`，可派生 service。
