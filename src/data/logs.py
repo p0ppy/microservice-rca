@@ -124,19 +124,10 @@ GAIA_MSG_SEP = " | "
 
 
 def parse_gaia_business_message(msg) -> dict:
-    """
-    解析 7 段式 message：
-        time | level | ip | service | code_location | trace_id | body
-    不足 6 段时走 fallback。
-    """
     default = {
-        "log_time": None,
-        "level": "UNKNOWN",
-        "host_ip": None,
-        "service_msg": None,
-        "code_location": None,
-        "trace_id": None,
-        "message_body": "" if pd.isna(msg) else str(msg),
+        "log_time": None, "level": "UNKNOWN", "host_ip": None,
+        "service_msg": None, "code_location": None,
+        "trace_id": None, "message_body": "" if pd.isna(msg) else str(msg),
     }
     if pd.isna(msg):
         return default
@@ -145,27 +136,50 @@ def parse_gaia_business_message(msg) -> dict:
     if len(parts) < 6:
         return default
 
+    # 第 6 段可能被后续 ` | ` 污染，只取第一个 token
+    raw_trace = parts[5].strip()
+    trace_id = raw_trace.split()[0] if raw_trace else None
+    # 只接受 16 位十六进制
+    if trace_id and not re.fullmatch(r"[0-9a-fA-F]{16}", trace_id):
+        trace_id = None
+
+    body_parts = [raw_trace] + parts[6:] if raw_trace else parts[6:]
     return {
         "log_time": parts[0].strip() or None,
         "level": (parts[1].strip().upper() or "UNKNOWN"),
         "host_ip": parts[2].strip() or None,
         "service_msg": parts[3].strip() or None,
         "code_location": parts[4].strip() or None,
-        "trace_id": parts[5].strip() or None,
-        "message_body": GAIA_MSG_SEP.join(parts[6:]) if len(parts) > 6 else "",
+        "trace_id": trace_id,
+        "message_body": GAIA_MSG_SEP.join(body_parts),
     }
 
 
-def load_gaia_business(path: str) -> pd.DataFrame:
-    """读单个 GAIA business_table_*.csv。"""
-    df = pd.read_csv(path)
+def load_gaia_business(path: str, max_rows: int | None = None) -> pd.DataFrame:
+    """
+    读单个 GAIA business_table_*.csv。
+    - dtype=str：避免类型推断，减少内存
+    - on_bad_lines="skip"：跳过坏行
+    - engine="python"：容错更好
+    - max_rows：demo 阶段限制行数，全量时传 None
+    """
+    read_kwargs = dict(
+        dtype=str,
+        on_bad_lines="skip",
+        engine="python",
+        encoding="utf-8",
+    )
+    if max_rows is not None:
+        read_kwargs["nrows"] = max_rows
+
+    df = pd.read_csv(path, **read_kwargs)
+
     if "id" in df.columns:
         df = df.drop(columns=["id"])
 
     parsed = df["message"].apply(parse_gaia_business_message).apply(pd.Series)
     df = pd.concat([df.drop(columns=["message"]), parsed], axis=1)
 
-    # log_time 形如 "2021-08-01 00:00:01,302"；把逗号换成点再解析
     df["timestamp"] = pd.to_datetime(
         df["log_time"].astype(str).str.replace(",", ".", regex=False),
         format="%Y-%m-%d %H:%M:%S.%f",
@@ -210,12 +224,18 @@ def parse_gaia_run_message(msg) -> dict:
 
 
 def load_gaia_run(path: str) -> pd.DataFrame:
-    """读单个 run_table_*.csv；故障注入记录。"""
     df = pd.read_csv(path)
     parsed = df["message"].apply(parse_gaia_run_message).apply(pd.Series)
     df = pd.concat([df, parsed], axis=1)
 
-    df["timestamp"] = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+    # 优先用 message 里的精确开始时间
+    df["timestamp"] = pd.to_datetime(
+        df["start_time"], utc=True, errors="coerce"
+    )
+    # 如果没有 start_time，回退到 datetime
+    fallback = pd.to_datetime(df["datetime"], utc=True, errors="coerce")
+    df["timestamp"] = df["timestamp"].fillna(fallback)
+
     df["pod"] = None
     df["node"] = None
     df["message_clean"] = df["message"].apply(clean_message)
@@ -296,12 +316,17 @@ def main():
     )
     p.add_argument("--output", required=True, help="输出 parquet 路径")
     p.add_argument("--aggregate", action="store_true", help="同时输出窗口聚合")
+    p.add_argument("--max-rows", type=int, default=None,
+               help="demo 阶段限制读取行数；全量不传")
     args = p.parse_args()
 
     if args.source == "aiops":
         df = _load_dir(args.input, load_aiops_logs)
     elif args.source == "gaia_business":
-        df = _load_dir(args.input, load_gaia_business)
+        df = _load_dir(
+            args.input,
+            lambda p: load_gaia_business(p, max_rows=args.max_rows),
+        )
     else:
         df = _load_dir(args.input, load_gaia_run)
 
