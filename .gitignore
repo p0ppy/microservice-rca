@@ -27,6 +27,6 @@ Thumbs.db
 *.tmp
 
 # 忽略所有数据和输出临时文件
-data/
+/data/
 notebooks/
 outputs/
