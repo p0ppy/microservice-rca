@@ -33,3 +33,24 @@
 - trace_id 非空比例：100%（清洗后污染记录置 None 或修复）
 - levels：INFO 为主，ERROR 542
 - 结论：通过
+
+## 2026-11-10 traces 最终验证
+
+### AIOps 2025 trace
+- 小样本：480,000 spans / 25,918 traces / 8 services
+- error spans：67（gRPC 13/14/1）
+- cross-service edges：186,837
+- span_kind：client 290,169 / server 189,831（已统一小写）
+- parent_id 非空：94.78%
+- 10am 单文件：378,987 spans / 19,816 traces / 8 services / error 440
+- 确认：8 个服务不是抽样偏差；adservice/currencyservice/paymentservice 未产生 span
+- 时区：文件名 10-00-00 是北京时间，内容 UTC 02:00-03:00
+- 10am 的 440 error 对应 groundtruth 02:02:59-02:15:59 network corrupt，时间吻合
+
+### GAIA trace
+- spans：200,000 / traces：40,241 / services：10
+- error spans：8,943（HTTP 500 8,871 + 400 72）
+- cross-service edges：139,823
+- graph nodes/edges：10 / 30
+- status：200 183,084 / 500 8,871 / 300 7,973 / 400 72
+- 跨服务调用 top：webservice1 → mobservice2、logservice2 → logservice1 等，拓扑合理
