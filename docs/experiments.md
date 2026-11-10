@@ -71,3 +71,22 @@
 - example-ant-* 是 K8s 测试 Pod，非业务服务，后续 align 时按缺失值过滤
 - checkoutservice 有约 8 小时数据缺失，是真实特征，不影响故障窗口对齐
 - max 4317 换算 1439 分钟/天，聚合正确
+
+## 2026-11-11 infra_node 修复验证
+
+### 问题
+- pod 列是字符串 'null' 不是 NaN，notna() 返回 True
+- _pick_infra_entity 误选 pod，11 个节点合并成 1 个 'null' 实体
+
+### 修复
+- 新增 _clean_null，把 'null'/'None'/'nan' 统一成 pd.NA
+- pod 全 NA 时跳过，选 kubernetes_node
+
+### 修复后结果
+- rows：253,264
+- entities：11（aiops-k8s-01~08 + k8s-master1~3）
+- metrics：16
+- 每实体时间点数：23,024（16 metric × 1,439 分钟）
+- missing ts：0
+- window rows：50,688
+- 结论：修复生效，11 个节点全部正确区分
