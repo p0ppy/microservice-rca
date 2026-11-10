@@ -54,3 +54,20 @@
 - graph nodes/edges：10 / 30
 - status：200 183,084 / 500 8,871 / 300 7,973 / 400 72
 - 跨服务调用 top：webservice1 → mobservice2、logservice2 → logservice1 等，拓扑合理
+
+## 2026-11-10 infra_pod 实体异常确认
+
+### 时间点数最少的实体
+- example-ant-10-29150880-n27z6：2 个时间点（K8s 测试 Pod，约 1 分钟生命周期）
+- example-ant-29152320-kszxj：1316 个时间点（测试 Pod）
+- example-ant-10-29152320-7q99m：1437 个时间点（测试 Pod）
+- checkoutservice-1：2873 / 3 ≈ 958 分钟（约 8 小时数据缺失）
+- checkoutservice-2：2877 / 3 ≈ 959 分钟（约 8 小时数据缺失）
+
+### 时间点数最多的实体
+- emailservice-1/0、currencyservice-1、productcatalogservice-0、adservice-0：均 4317 / 3 ≈ 1439 分钟/天
+
+### 结论
+- example-ant-* 是 K8s 测试 Pod，非业务服务，后续 align 时按缺失值过滤
+- checkoutservice 有约 8 小时数据缺失，是真实特征，不影响故障窗口对齐
+- max 4317 换算 1439 分钟/天，聚合正确
