@@ -90,3 +90,31 @@
 - missing ts：0
 - window rows：50,688
 - 结论：修复生效，11 个节点全部正确区分
+
+## 2026-11-13 GAIA metric 全量合并完成
+
+### 合并结果
+- rows: 578,917,111（与 7 个子类总和一致）
+- entities: 21
+- metrics: 589
+- docker_cpu_core_* 残留: 0
+- row groups: 2,897
+- schema: 7 个文件一致
+- time range: 2021-07-01 10:00:10 → 2021-08-31 15:59:44
+- missing ts: 0
+- 输出: outputs/demo/metrics_gaia_full.parquet
+
+### entities 分类
+- 业务服务 8：dbservice1/2, logservice1/2, mobservice1/2, webservice1/2
+- 中间件 4：redis, redis_database, redisservice1/2, zookeeper
+- system 节点：system_0.0.0.1/2/3/4
+- 双 IP 重复实体（待归一化）：system_0.0.0.1_0.0.0.1 等 4 个
+
+### 待处理
+- 589 个 metric 需要按 field_mapping 保留清单筛选到 50-80 个
+- 双 IP 实体需要归一化成单 IP
+- 这两个在周六 align.py 里做
+
+### 结论
+- 合并成功，无丢行、无重复、CPU 聚合彻底
+- 数据规模符合预期，可进入 align 阶段
