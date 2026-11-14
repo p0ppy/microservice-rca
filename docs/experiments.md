@@ -159,3 +159,25 @@
 - 对齐 pipeline 正确
 - 时间窗口与 groundtruth 故障 100% 吻合
 - 后续微调数据集构建需按"整窗聚合输入 + groundtruth 根因标签"设计
+
+## 2026-11-14 GAIA sample 对齐（metric 筛选修复后）
+
+### 修复
+- GAIA_METRIC_KEEP_PREFIXES → GAIA_METRIC_KEEP_NAMES（精确匹配）
+- 589 个 metric 列 → 34 个
+
+### 结果
+- rows: 804
+- windows: 109
+- services: 10
+- source_count: 2 占 95%（764），3 有 40
+- metric cols: 34
+  - docker: 15（cpu 2 + diskio 4 + memory 3 + network 6）
+  - system: 13（cpu 4 + diskio 2 + fsstat 2 + load 3 + memory 2）
+  - redis: 3（replication_master_offset + keyspace_hits/misses）
+  - zookeeper: 0（实际文件名不匹配，待补）
+- GAIA metric 筛选率: 0.57%（3,325,648 / 578,917,111）
+
+### 结论
+- AIOps + GAIA 两套对齐 pipeline 全部打通
+- 对齐结果可用于 build_triplets.py

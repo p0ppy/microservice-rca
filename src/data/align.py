@@ -23,32 +23,55 @@ import pyarrow.parquet as pq
 # ==========================================================
 # metric 筛选清单（按 field_mapping.md 的保留策略）
 # ==========================================================
-GAIA_METRIC_KEEP_PREFIXES = (
+GAIA_METRIC_KEEP_NAMES = {
+    # docker CPU
     "docker_cpu_usage", "docker_cpu_ticks_total",
+    # docker 内存
     "docker_memory_usage_pct", "docker_memory_usage_total", "docker_memory_fail_count",
+    # docker 磁盘
     "docker_diskio_read_bytes", "docker_diskio_write_bytes",
     "docker_diskio_write_rate", "docker_diskio_write_queued",
+    # docker 网络
     "docker_network_in_bytes", "docker_network_out_bytes",
     "docker_network_in_errors", "docker_network_out_errors",
     "docker_network_in_dropped", "docker_network_out_dropped",
+    # system CPU
     "system_cpu_user_pct", "system_cpu_system_pct",
     "system_cpu_iowait_pct", "system_cpu_idle_pct",
+    # system 负载
     "system_load_norm_1", "system_load_norm_5", "system_load_norm_15",
+    # system 磁盘
     "system_diskio_read_bytes", "system_diskio_write_bytes",
+    # system 文件系统
     "system_fsstat_total_size_used", "system_fsstat_total_size_free",
+    # system 内存
     "system_memory_used_bytes", "system_memory_used_pct",
+    # system 网络
     "system_network_summary_tcp_CurrEstab",
     "system_network_summary_tcp_EstabResets",
     "system_network_summary_tcp_ListenDrops",
+    # redis
     "redis_info_replication_master_offset",
-    "redis_info_stats_",
-    "zookeeper_",
-)
+    "redis_info_stats_expired_keys",
+    "redis_info_stats_evicted_keys",
+    "redis_info_stats_keyspace_hits",
+    "redis_info_stats_keyspace_misses",
+    "redis_info_clients_connected_clients",
+    "redis_info_memory_used_memory",
+    "redis_info_memory_used_memory_peak",
+    # zookeeper
+    "zookeeper_avg_latency",
+    "zookeeper_max_latency",
+    "zookeeper_min_latency",
+    "zookeeper_outstanding_requests",
+    "zookeeper_packets_received",
+    "zookeeper_packets_sent",
+    "zookeeper_num_alive_connections",
+}
 
 
 def is_gaia_metric_kept(metric: str) -> bool:
-    return any(metric.startswith(p) for p in GAIA_METRIC_KEEP_PREFIXES)
-
+    return metric in GAIA_METRIC_KEEP_NAMES
 
 # ==========================================================
 # entity 归一化
