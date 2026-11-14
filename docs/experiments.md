@@ -204,3 +204,23 @@
 - 对齐完整，288 窗口全覆盖
 - 50 个正样本 + 238 个负样本，正负比例约 1:5
 - 可进入 build_triplets.py 阶段
+
+## 2026-11-14 build_triplets v1 质量检查
+
+### 正样本样例（2025-06-05 16:10 cpu stress emailservice）
+- 根因正确：emailservice + cpu stress
+- input 覆盖 8 服务 traces + metrics
+- 指标异常可见：emailservice rrt=16,284, rrt_max=120,906
+
+### v1 问题
+1. 阶段2 机械拼接 key_observations，未引用 input 里的具体异常值
+2. 日志特征"本窗口无明显异常日志"与故障窗口矛盾，措辞需改
+3. 阶段1 未说明基于什么信号检测到故障
+
+### 负样本样例（2025-06-05 16:00 正常窗口）
+- 结构一致，output 简洁，无明显问题
+
+### 结论
+- v1 作为骨架可用：288 条，119 正 + 169 负
+- output 需 CoT 蒸馏替换：用闭源大模型基于 input 具体数值生成四阶段推理
+- 下一阶段核心：CoT 蒸馏 + 质量校验
