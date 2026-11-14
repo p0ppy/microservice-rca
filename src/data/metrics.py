@@ -144,8 +144,52 @@ def load_aiops_infra(path: str) -> pd.DataFrame:
 # ==========================================================
 # GAIA metric（占位，周四补）
 # ==========================================================
+import re
+
+GAIA_METRIC_FILENAME_RE = re.compile(
+    r"^(?P<entity>.+_\d+\.\d+\.\d+\.\d+)_(?P<metric>.+)_"
+    r"(?P<start>\d{4}-\d{2}-\d{2})_(?P<end>\d{4}-\d{2}-\d{2})\.csv$"
+)
+
+
+def _parse_gaia_metric_filename(path: str) -> dict | None:
+    """解析 GAIA metric 文件名，返回 entity / metric / start / end。"""
+    name = os.path.basename(path)
+    m = GAIA_METRIC_FILENAME_RE.match(name)
+    return m.groupdict() if m else None
+
+
+def _normalize_gaia_metric_name(name: str) -> str:
+    """按核心号展开的指标名归一化。"""
+    if name.startswith("docker_cpu_core_"):
+        if name.endswith("_pct") or name.endswith("_norm_pct"):
+            return "docker_cpu_usage"
+        if name.endswith("_ticks"):
+            return "docker_cpu_ticks_total"
+    return name
+
+
 def load_gaia_metric(path: str) -> pd.DataFrame:
-    raise NotImplementedError("GAIA metric 周四实现")
+    """读单个 GAIA MicroSS/metric CSV。"""
+    meta = _parse_gaia_metric_filename(path)
+    if meta is None:
+        return pd.DataFrame()
+
+    df = pd.read_csv(path, dtype={"timestamp": "int64", "value": "float64"})
+    if "timestamp" not in df.columns or "value" not in df.columns:
+        return pd.DataFrame()
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True, errors="coerce")
+    df["metric_raw"] = meta["metric"]
+    df["metric"] = _normalize_gaia_metric_name(meta["metric"])
+    df["entity"] = meta["entity"]
+    df["entity_type"] = "gaia"
+    df = df.dropna(subset=["timestamp", "value"])
+    df["window_5min"] = df["timestamp"].dt.floor("5min")
+
+    return df[[
+        "timestamp", "entity", "entity_type", "metric", "value", "window_5min"
+    ]]
 
 
 # ==========================================================
@@ -198,7 +242,7 @@ def window_features(df: pd.DataFrame) -> pd.DataFrame:
 # ==========================================================
 def main():
     p = argparse.ArgumentParser(description="Metric loader for AIOps 2025.")
-    p.add_argument("--source", required=True, choices=["apm", "infra"])
+    p.add_argument("--source", required=True, choices=["apm", "infra", "gaia"])
     p.add_argument("--input", required=True, help="glob 模式")
     p.add_argument("--output", required=True)
     p.add_argument("--aggregate", action="store_true")
@@ -208,8 +252,10 @@ def main():
 
     if args.source == "apm":
         loader = load_aiops_apm
-    else:
+    elif args.source == "infra":
         loader = load_aiops_infra
+    else:
+        loader = load_gaia_metric
 
     files = _glob_files(args.input)
     if args.max_files:
