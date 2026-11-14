@@ -118,3 +118,44 @@
 ### 结论
 - 合并成功，无丢行、无重复、CPU 聚合彻底
 - 数据规模符合预期，可进入 align 阶段
+
+## 2026-11-14 align.py AIOps 对齐验证
+
+### 改进策略
+- traces 作 base，logs 和 metrics left join
+- logs 缺失填 0，metrics 缺失保留 NaN
+- source_count：trace 恒 1，logs>0 加 1，metrics 非全 NaN 加 1
+
+### AIOps 对齐结果
+- rows：288
+- windows：36
+- services：8
+- metric cols：77
+- source_count：
+  - 1：36（traces + metrics 全 NaN）
+  - 2：245（85%）
+  - 3：7（故障窗口）
+
+### 3 源样本验证（7/7 匹配 groundtruth）
+| 窗口 | log_error | trace_error | 匹配故障 |
+|---|---|---|---|
+| 2025-06-06 02:00 | 13 | 26 | network corrupt |
+| 2025-06-06 04:00 | 32 | 0 | pod kill |
+| 2025-06-06 07:00 | 20 | 0 | pod kill |
+| 2025-06-06 10:00 | 498 | 0 | pod failure |
+| 2025-06-06 12:00 | 20 | 0 | network corrupt |
+| 2025-06-06 13:00 | 28 | 15 | pod kill |
+| 2025-06-06 15:00 | 2 | 4 | memory stress |
+
+匹配率：100%
+
+### 数据限制
+- 3 源样本的 service 全部是 frontend
+- 原因：日志只有 frontend 有大量异常；trace 的 frontend span 数最多
+- 影响：不能用"service=frontend"训练"根因是 recommendationservice"
+- 解决：build_triplets.py 用 groundtruth 的 service 作为 root_service 标签，输入用整窗所有服务聚合特征
+
+### 结论
+- 对齐 pipeline 正确
+- 时间窗口与 groundtruth 故障 100% 吻合
+- 后续微调数据集构建需按"整窗聚合输入 + groundtruth 根因标签"设计
