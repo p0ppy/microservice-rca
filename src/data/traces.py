@@ -173,7 +173,14 @@ def load_gaia_traces(path: str) -> pd.DataFrame:
 # ==========================================================
 # 统一加载
 # ==========================================================
-def _load_dir(pattern: str, loader_fn, max_rows_per_file: int | None = None) -> pd.DataFrame:
+def _load_dir(pattern: str, loader_fn, sample_per_window: int | None = None) -> pd.DataFrame:
+    """
+    逐文件加载，按 window_5min 分层抽样，保证每个窗口都有数据。
+    - sample_per_window: 每个 5 分钟窗口最多保留多少条 span
+    - 不设置时全量读，可能 OOM
+    """
+    import gc
+
     files = _glob_files(pattern)
     if not files:
         return pd.DataFrame()
@@ -182,14 +189,30 @@ def _load_dir(pattern: str, loader_fn, max_rows_per_file: int | None = None) -> 
     for f in files:
         try:
             d = loader_fn(f)
-            if max_rows_per_file is not None:
-                d = d.head(max_rows_per_file)
+            if d.empty:
+                continue
+
+            if sample_per_window is not None and "window_5min" in d.columns:
+                sampled = []
+                for _, g in d.groupby("window_5min", sort=False):
+                    if len(g) > sample_per_window:
+                        sampled.append(g.sample(n=sample_per_window, random_state=42))
+                    else:
+                        sampled.append(g)
+                d = pd.concat(sampled, ignore_index=True)
+                del sampled
+                gc.collect()
+
             dfs.append(d)
             print(f"[ok] {os.path.basename(f)}: {len(d)} rows")
+            del d
+            gc.collect()
         except Exception as e:
             print(f"[skip] {f}: {e}")
 
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+    if not dfs:
+        return pd.DataFrame()
+    return pd.concat(dfs, ignore_index=True)
 
 
 # ==========================================================
@@ -346,16 +369,16 @@ def main():
     p.add_argument("--source", required=True, choices=["aiops", "gaia"])
     p.add_argument("--input", required=True, help="glob 模式")
     p.add_argument("--output", required=True, help="spans parquet 路径")
-    p.add_argument("--max-rows", type=int, default=None,
-                   help="每个文件最多读取行数；demo 时用")
+    p.add_argument("--sample-per-window", type=int, default=None,
+               help="每个 5min 窗口最多保留多少条 span；推荐 2000")
     p.add_argument("--aggregate", action="store_true", help="输出窗口聚合")
     p.add_argument("--topology", action="store_true", help="输出拓扑节点统计")
     args = p.parse_args()
 
     if args.source == "aiops":
-        df = _load_dir(args.input, load_aiops_traces, max_rows_per_file=args.max_rows)
+        df = _load_dir(args.input, load_aiops_traces, sample_per_window=args.sample_per_window)
     else:
-        df = _load_dir(args.input, load_gaia_traces, max_rows_per_file=args.max_rows)
+        df = _load_dir(args.input, load_gaia_traces, sample_per_window=args.sample_per_window)
 
     if df.empty:
         print("[warn] empty dataframe; check input pattern:", args.input)

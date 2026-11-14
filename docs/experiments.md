@@ -181,3 +181,26 @@
 ### 结论
 - AIOps + GAIA 两套对齐 pipeline 全部打通
 - 对齐结果可用于 build_triplets.py
+
+## 2026-11-14 AIOps 对齐（traces 修复后）
+
+### 结果
+- rows: 2,264
+- windows: 288
+- services: 8
+- metric cols: 77
+- source_count:
+  - 1: 285（traces 有，metrics 全 NaN）
+  - 2: 1,929（traces + metrics）
+  - 3: 50（故障窗口，traces + logs + metrics）
+
+### 3 源样本验证
+- 数量: 50
+- 窗口数: 48（覆盖 48 个故障窗口）
+- service 分布: frontend 48, cartservice 1, recommendationservice 1
+- 说明: frontend 占 96% 是数据特性（日志只有 frontend 有大量 ERROR），不影响 build_triplets.py 设计
+
+### 结论
+- 对齐完整，288 窗口全覆盖
+- 50 个正样本 + 238 个负样本，正负比例约 1:5
+- 可进入 build_triplets.py 阶段
